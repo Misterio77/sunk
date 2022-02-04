@@ -20,6 +20,11 @@ pub enum Error {
     #[error("Invalid URL: {}", _0)]
     Url(#[from] url::ParseError),
     // Url(UrlError),
+
+    /// Unable to recognize the URL provided in `Client` setup.
+    #[error("Not a valid base URL: {}", _0)]
+    InvalidBaseUrl(String),
+
     /// The Subsonic server returned an error.
     #[error("{}", _0)]
     Api(#[from] ApiError),

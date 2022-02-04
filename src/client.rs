@@ -75,7 +75,11 @@ impl SubsonicAuth {
         }
     }
 
-    fn to_url(&self, ver: Version) -> String {
+    fn add_to_query_pairs(
+        &self,
+        ver: Version,
+        query_pairs: &mut url::form_urlencoded::Serializer<url::UrlQuery>,
+    ) {
         // First md5 support.
         let auth = if ver >= "1.13.0".into() {
             use md5;
@@ -91,21 +95,20 @@ impl SubsonicAuth {
             let pre_t = self.password.to_string() + &salt;
             let token = format!("{:x}", md5::compute(pre_t.as_bytes()));
 
-            format!("u={u}&t={t}&s={s}", u = self.user, t = token, s = salt)
+            query_pairs.append_pair("u", &self.user);
+            query_pairs.append_pair("t", &token);
+            query_pairs.append_pair("s", &salt);
         } else {
-            format!("u={u}&p={p}", u = self.user, p = self.password)
+            query_pairs.append_pair("u", &self.user);
+            query_pairs.append_pair("p", &self.password);
         };
 
         let format = "json";
         let crate_name = env!("CARGO_PKG_NAME");
 
-        format!(
-            "{auth}&v={v}&c={c}&f={f}",
-            auth = auth,
-            v = ver,
-            c = crate_name,
-            f = format
-        )
+        query_pairs.append_pair("v", &ver.to_string());
+        query_pairs.append_pair("c", crate_name);
+        query_pairs.append_pair("f", format);
     }
 }
 
@@ -150,20 +153,20 @@ impl Client {
     /// not required.
     #[cfg_attr(feature = "cargo-clippy", allow(needless_pass_by_value))]
     pub(crate) fn build_url(&self, query: &str, args: Query) -> Result<String> {
-        let scheme = self.url.scheme();
-        let addr = self
-            .url
-            .host_str()
-            .ok_or_else(|| Error::Url(url::ParseError::EmptyHost))?;
+        let mut req_url = self.url.clone();
+        req_url
+            .path_segments_mut()
+            .map_err(|_| Error::InvalidBaseUrl(self.url.to_string()))?
+            .push(query);
 
-        let mut url = [scheme, "://", addr, "/rest/"].concat();
-        url.push_str(query);
-        url.push_str("?");
-        url.push_str(&self.auth.to_url(self.target_ver));
-        url.push_str("&");
-        url.push_str(&args.to_string());
+        {
+            let mut query_pairs = req_url.query_pairs_mut();
+            self.auth
+                .add_to_query_pairs(self.target_ver, &mut query_pairs);
+            args.add_to_query_pairs(&mut query_pairs);
+        }
 
-        Ok(url)
+        Ok(req_url.as_str().to_owned())
     }
 
     /// Issues a request to the Subsonic server.

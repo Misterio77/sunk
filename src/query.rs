@@ -96,6 +96,19 @@ impl Query {
             inner: self.inner.drain(..).collect(),
         }
     }
+
+    pub(crate) fn add_to_query_pairs(
+        &self,
+        query_pairs: &mut url::form_urlencoded::Serializer<url::UrlQuery>,
+    ) {
+        for (k, v) in self.inner.iter() {
+            if v.is_some() {
+                query_pairs.append_pair(k, &v.to_string());
+            } else {
+                query_pairs.append_key_only(k);
+            }
+        }
+    }
 }
 
 impl iter::Extend<(String, Arg)> for Query {
